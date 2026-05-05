@@ -32,7 +32,7 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- FIXED SCRIPT (IMPORTANT) -->
+<!-- ✅ STABLE CDN -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
 <script>
@@ -42,14 +42,14 @@ const ctx = canvas.getContext("2d");
 const switchBtn = document.getElementById("switchBtn");
 
 let stream = null;
-let currentFacingMode = "environment";
+let facingMode = "environment";
 
 // 📷 Camera
 async function setupCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
 
   stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: currentFacingMode }
+    video: { facingMode }
   });
 
   video.srcObject = stream;
@@ -63,10 +63,10 @@ async function setupCamera() {
   });
 }
 
-// 🧠 Load model
+// 🧠 Load model (FIXED URL)
 async function loadModels() {
   await faceapi.nets.tinyFaceDetector.loadFromUri(
-    "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights"
+    "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"
   );
 }
 
@@ -96,27 +96,20 @@ async function detectFaces() {
 }
 
 // 🔄 Switch camera
-switchBtn.addEventListener("click", async () => {
-  currentFacingMode =
-    currentFacingMode === "environment" ? "user" : "environment";
+switchBtn.onclick = async () => {
+  facingMode = facingMode === "environment" ? "user" : "environment";
   await setupCamera();
-});
+};
 
 // 🚀 Start
 async function start() {
   try {
-    console.log("Loading models...");
     await loadModels();
-
-    console.log("Starting camera...");
     await setupCamera();
-
-    console.log("Running detection...");
     detectFaces();
-
-  } catch (err) {
-    alert("Error: " + err.message);
-    console.error(err);
+  } catch (e) {
+    alert("Error: " + e.message);
+    console.log(e);
   }
 }
 
