@@ -7,20 +7,12 @@
   <style>
     body {
       margin: 0;
-      background: black;
       overflow: hidden;
+      background: black;
     }
 
-    video {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover; /* ✅ FIXES ZOOM/STRETCH */
-    }
-
-    canvas {
+    /* IMPORTANT: no width:100% here */
+    video, canvas {
       position: absolute;
       top: 0;
       left: 0;
@@ -46,91 +38,82 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- MediaPipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tracking/build/tracking-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tracking/build/data/face-min.js"></script>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
+let stream = null;
 let facingMode = "environment";
+let trackerStarted = false;
 
 // 📷 CAMERA
 async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode,
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    },
-    audio: false
+  if (stream) stream.getTracks().forEach(t => t.stop());
+
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode }
   });
 
   video.srcObject = stream;
 
   return new Promise(resolve => {
     video.onloadedmetadata = () => {
+
+      // ✅ FORCE EXACT MATCH (THIS FIXES ALIGNMENT)
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+
+      video.width = video.videoWidth;
+      video.height = video.videoHeight;
+
       resolve();
     };
   });
 }
 
-// 🧠 REAL FACE DETECTOR
-const faceDetection = new FaceDetection.FaceDetection({
-  locateFile: (file) =>
-    `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
-});
+// 👁 FACE DETECTION
+function startDetection() {
+  if (trackerStarted) return;
+  trackerStarted = true;
 
-faceDetection.setOptions({
-  model: "short",
-  minDetectionConfidence: 0.5
-});
+  const tracker = new tracking.ObjectTracker("face");
 
-faceDetection.onResults(onResults);
+  tracker.setInitialScale(4);
+  tracker.setStepSize(2);
+  tracker.setEdgesDensity(0.1);
 
-// 🎯 DRAW REAL RESULTS
-function onResults(results) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  tracking.track(video, tracker);
 
-  if (!results.detections) return;
+  tracker.on("track", event => {
 
-  results.detections.forEach(det => {
-    const box = det.boundingBox;
+    // draw video EXACTLY same size as canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const x = box.xCenter * canvas.width - (box.width * canvas.width / 2);
-    const y = box.yCenter * canvas.height - (box.height * canvas.height / 2);
-    const w = box.width * canvas.width;
-    const h = box.height * canvas.height;
+    event.data.forEach(rect => {
+      ctx.strokeStyle = "lime";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, w, h);
-
-    ctx.fillStyle = "lime";
-    ctx.font = "16px Arial";
-    ctx.fillText("Face", x, y > 10 ? y - 5 : 10);
+      ctx.fillStyle = "lime";
+      ctx.font = "16px Arial";
+      ctx.fillText("Face", rect.x, rect.y > 10 ? rect.y - 5 : 10);
+    });
   });
 }
 
 // 🔄 SWITCH CAMERA
 document.getElementById("switchBtn").onclick = async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
-  await startCamera();
-};
+  trackerStarted = false;
 
-// 🚀 LOOP
-async function startDetection() {
-  async function loop() {
-    await faceDetection.send({ image: video });
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
+  await startCamera();
+  startDetection();
+};
 
 // 🚀 START
 async function start() {
