@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Person Detector</title>
+  <title>Face Detector</title>
   <style>
     body { margin: 0; overflow: hidden; background: black; }
     video, canvas {
@@ -30,8 +30,7 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
 
 <script>
 const video = document.getElementById("video");
@@ -41,7 +40,6 @@ const switchBtn = document.getElementById("switchBtn");
 
 let currentFacingMode = "environment";
 let stream = null;
-let model = null;
 
 async function setupCamera() {
   if (stream) {
@@ -63,42 +61,32 @@ async function setupCamera() {
   });
 }
 
-async function detect() {
-  if (!model) return;
+async function loadModels() {
+  await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+}
 
-  const predictions = await model.detect(video);
+async function detectFaces() {
+  const detections = await faceapi.detectAllFaces(
+    video,
+    new faceapi.TinyFaceDetectorOptions()
+  );
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(video, 0, 0);
 
-  predictions.forEach(prediction => {
-    const [x, y, width, height] = prediction.bbox;
+  detections.forEach(det => {
+    const { x, y, width, height } = det.box;
 
-    // DEBUG: draw all detections
-    ctx.strokeStyle = "red";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 3;
     ctx.strokeRect(x, y, width, height);
-    ctx.fillStyle = "red";
-    ctx.font = "14px Arial";
-    ctx.fillText(
-      prediction.class + " " + Math.round(prediction.score * 100) + "%",
-      x,
-      y > 10 ? y - 5 : 10
-    );
 
-    // REAL: only highlight people
-    if (prediction.class === "person" && prediction.score > 0.6) {
-      ctx.strokeStyle = "lime";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(x, y, width, height);
-
-      ctx.fillStyle = "lime";
-      ctx.font = "16px Arial";
-      ctx.fillText("Person", x, y > 10 ? y - 20 : 20);
-    }
+    ctx.fillStyle = "lime";
+    ctx.font = "16px Arial";
+    ctx.fillText("Face", x, y > 10 ? y - 5 : 10);
   });
 
-  requestAnimationFrame(detect);
+  requestAnimationFrame(detectFaces);
 }
 
 switchBtn.addEventListener("click", async () => {
@@ -108,12 +96,11 @@ switchBtn.addEventListener("click", async () => {
 
 async function start() {
   try {
+    await loadModels();
     await setupCamera();
-    model = await cocoSsd.load();
-    console.log("Model loaded");
-    detect();
+    detectFaces();
   } catch (err) {
-    alert("Camera error: " + err.message);
+    alert("Error: " + err.message);
   }
 }
 
