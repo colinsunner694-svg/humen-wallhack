@@ -5,13 +5,17 @@
   <title>Face Detector</title>
 
   <style>
-    body { margin: 0; overflow: hidden; background: black; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+    }
 
+    /* IMPORTANT: no width:100% here */
     video, canvas {
       position: absolute;
       top: 0;
       left: 0;
-      width: 100%;
     }
 
     button {
@@ -34,7 +38,6 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- Face tracking library -->
 <script src="https://cdn.jsdelivr.net/npm/tracking/build/tracking-min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tracking/build/data/face-min.js"></script>
 
@@ -47,7 +50,7 @@ let stream = null;
 let facingMode = "environment";
 let trackerStarted = false;
 
-// 📷 Camera setup
+// 📷 CAMERA
 async function startCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
 
@@ -59,14 +62,20 @@ async function startCamera() {
 
   return new Promise(resolve => {
     video.onloadedmetadata = () => {
+
+      // ✅ FORCE EXACT MATCH (THIS FIXES ALIGNMENT)
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+
+      video.width = video.videoWidth;
+      video.height = video.videoHeight;
+
       resolve();
     };
   });
 }
 
-// 👁 Face detection
+// 👁 FACE DETECTION
 function startDetection() {
   if (trackerStarted) return;
   trackerStarted = true;
@@ -80,31 +89,24 @@ function startDetection() {
   tracking.track(video, tracker);
 
   tracker.on("track", event => {
+
+    // draw video EXACTLY same size as canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // ✅ FIX: proper scaling
-    const scaleX = canvas.width / video.videoWidth;
-    const scaleY = canvas.height / video.videoHeight;
-
     event.data.forEach(rect => {
-      const x = rect.x * scaleX;
-      const y = rect.y * scaleY;
-      const w = rect.width * scaleX;
-      const h = rect.height * scaleY;
-
       ctx.strokeStyle = "lime";
       ctx.lineWidth = 3;
-      ctx.strokeRect(x, y, w, h);
+      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
       ctx.fillStyle = "lime";
       ctx.font = "16px Arial";
-      ctx.fillText("Face", x, y > 10 ? y - 5 : 10);
+      ctx.fillText("Face", rect.x, rect.y > 10 ? rect.y - 5 : 10);
     });
   });
 }
 
-// 🔄 Switch camera
+// 🔄 SWITCH CAMERA
 document.getElementById("switchBtn").onclick = async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
   trackerStarted = false;
@@ -113,7 +115,7 @@ document.getElementById("switchBtn").onclick = async () => {
   startDetection();
 };
 
-// 🚀 Start app
+// 🚀 START
 async function start() {
   await startCamera();
   startDetection();
