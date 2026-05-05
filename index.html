@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Person Detector</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    video, canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+  </style>
+</head>
+<body>
+
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+async function setupCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" }
+  });
+  video.srcObject = stream;
+
+  return new Promise(resolve => {
+    video.onloadedmetadata = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      resolve(video);
+    };
+  });
+}
+
+async function detectPeople() {
+  const model = await cocoSsd.load();
+
+  async function detect() {
+    const predictions = await model.detect(video);
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0);
+
+    predictions.forEach(prediction => {
+      if (prediction.class === "person") {
+        const [x, y, width, height] = prediction.bbox;
+
+        // Draw green box
+        ctx.strokeStyle = "green";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, width, height);
+
+        // Label
+        ctx.fillStyle = "green";
+        ctx.font = "16px Arial";
+        ctx.fillText("Person", x, y > 10 ? y - 5 : 10);
+      }
+    });
+
+    requestAnimationFrame(detect);
+  }
+
+  detect();
+}
+
+async function start() {
+  await setupCamera();
+  detectPeople();
+}
+
+start();
+</script>
+
+</body>
+</html>
