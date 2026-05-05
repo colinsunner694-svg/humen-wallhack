@@ -34,7 +34,7 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- Face detector library (NO model downloads needed) -->
+<!-- Face tracking library -->
 <script src="https://cdn.jsdelivr.net/npm/tracking/build/tracking-min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tracking/build/data/face-min.js"></script>
 
@@ -45,8 +45,9 @@ const ctx = canvas.getContext("2d");
 
 let stream = null;
 let facingMode = "environment";
+let trackerStarted = false;
 
-// 📷 Camera
+// 📷 Camera setup
 async function startCamera() {
   if (stream) stream.getTracks().forEach(t => t.stop());
 
@@ -65,8 +66,11 @@ async function startCamera() {
   });
 }
 
-// 👁 Face tracking
+// 👁 Face detection
 function startDetection() {
+  if (trackerStarted) return;
+  trackerStarted = true;
+
   const tracker = new tracking.ObjectTracker("face");
 
   tracker.setInitialScale(4);
@@ -77,16 +81,25 @@ function startDetection() {
 
   tracker.on("track", event => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(video, 0, 0);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // ✅ FIX: proper scaling
+    const scaleX = canvas.width / video.videoWidth;
+    const scaleY = canvas.height / video.videoHeight;
 
     event.data.forEach(rect => {
+      const x = rect.x * scaleX;
+      const y = rect.y * scaleY;
+      const w = rect.width * scaleX;
+      const h = rect.height * scaleY;
+
       ctx.strokeStyle = "lime";
       ctx.lineWidth = 3;
-      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.strokeRect(x, y, w, h);
 
       ctx.fillStyle = "lime";
       ctx.font = "16px Arial";
-      ctx.fillText("Face", rect.x, rect.y > 10 ? rect.y - 5 : 10);
+      ctx.fillText("Face", x, y > 10 ? y - 5 : 10);
     });
   });
 }
@@ -94,11 +107,13 @@ function startDetection() {
 // 🔄 Switch camera
 document.getElementById("switchBtn").onclick = async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
+  trackerStarted = false;
+
   await startCamera();
   startDetection();
 };
 
-// 🚀 Start
+// 🚀 Start app
 async function start() {
   await startCamera();
   startDetection();
