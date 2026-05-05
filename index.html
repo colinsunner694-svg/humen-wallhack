@@ -4,11 +4,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Person Detector</title>
   <style>
-    body { margin: 0; overflow: hidden; }
+    body { margin: 0; overflow: hidden; background: black; }
     video, canvas {
       position: absolute;
       top: 0;
       left: 0;
+      width: 100%;
     }
     button {
       position: absolute;
@@ -17,6 +18,9 @@
       left: 20px;
       padding: 12px 16px;
       font-size: 16px;
+      background: white;
+      border: none;
+      border-radius: 8px;
     }
   </style>
 </head>
@@ -41,7 +45,6 @@ let model = null;
 
 async function setupCamera() {
   if (stream) {
-    // Stop previous stream
     stream.getTracks().forEach(track => track.stop());
   }
 
@@ -61,22 +64,37 @@ async function setupCamera() {
 }
 
 async function detect() {
+  if (!model) return;
+
   const predictions = await model.detect(video);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(video, 0, 0);
 
   predictions.forEach(prediction => {
-    if (prediction.class === "person") {
-      const [x, y, width, height] = prediction.bbox;
+    const [x, y, width, height] = prediction.bbox;
 
-      ctx.strokeStyle = "green";
+    // DEBUG: draw all detections
+    ctx.strokeStyle = "red";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+    ctx.fillStyle = "red";
+    ctx.font = "14px Arial";
+    ctx.fillText(
+      prediction.class + " " + Math.round(prediction.score * 100) + "%",
+      x,
+      y > 10 ? y - 5 : 10
+    );
+
+    // REAL: only highlight people
+    if (prediction.class === "person" && prediction.score > 0.6) {
+      ctx.strokeStyle = "lime";
       ctx.lineWidth = 3;
       ctx.strokeRect(x, y, width, height);
 
-      ctx.fillStyle = "green";
+      ctx.fillStyle = "lime";
       ctx.font = "16px Arial";
-      ctx.fillText("Person", x, y > 10 ? y - 5 : 10);
+      ctx.fillText("Person", x, y > 10 ? y - 20 : 20);
     }
   });
 
@@ -89,9 +107,14 @@ switchBtn.addEventListener("click", async () => {
 });
 
 async function start() {
-  await setupCamera();
-  model = await cocoSsd.load();
-  detect();
+  try {
+    await setupCamera();
+    model = await cocoSsd.load();
+    console.log("Model loaded");
+    detect();
+  } catch (err) {
+    alert("Camera error: " + err.message);
+  }
 }
 
 start();
