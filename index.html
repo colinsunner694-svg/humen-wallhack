@@ -6,6 +6,7 @@
 
   <style>
     body { margin: 0; overflow: hidden; background: black; }
+
     video, canvas {
       position: absolute;
       top: 0;
@@ -21,8 +22,8 @@
       padding: 12px 16px;
       font-size: 16px;
       background: white;
-      border-radius: 8px;
       border: none;
+      border-radius: 8px;
     }
   </style>
 </head>
@@ -33,90 +34,71 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- MediaPipe -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<!-- Face detector library (NO model downloads needed) -->
+<script src="https://cdn.jsdelivr.net/npm/tracking/build/tracking-min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tracking/build/data/face-min.js"></script>
 
 <script>
-const videoElement = document.getElementById("video");
+const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-let camera;
+let stream = null;
 let facingMode = "environment";
 
-// 📷 Setup camera
+// 📷 Camera
 async function startCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
+  if (stream) stream.getTracks().forEach(t => t.stop());
+
+  stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode }
   });
 
-  videoElement.srcObject = stream;
+  video.srcObject = stream;
 
   return new Promise(resolve => {
-    videoElement.onloadedmetadata = () => {
-      canvas.width = videoElement.videoWidth;
-      canvas.height = videoElement.videoHeight;
+    video.onloadedmetadata = () => {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
       resolve();
     };
   });
 }
 
-// 🧠 Face detector (MediaPipe)
-const faceDetection = new FaceDetection.FaceDetection({
-  locateFile: (file) =>
-    `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
-});
+// 👁 Face tracking
+function startDetection() {
+  const tracker = new tracking.ObjectTracker("face");
 
-faceDetection.setOptions({
-  model: "short",
-  minDetectionConfidence: 0.5
-});
+  tracker.setInitialScale(4);
+  tracker.setStepSize(2);
+  tracker.setEdgesDensity(0.1);
 
-faceDetection.onResults(onResults);
+  tracking.track(video, tracker);
 
-// 🎯 Draw results
-function onResults(results) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+  tracker.on("track", event => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0);
 
-  if (results.detections) {
-    results.detections.forEach(det => {
-      const box = det.boundingBox;
-
-      const x = box.xCenter * canvas.width - (box.width * canvas.width / 2);
-      const y = box.yCenter * canvas.height - (box.height * canvas.height / 2);
-      const w = box.width * canvas.width;
-      const h = box.height * canvas.height;
-
+    event.data.forEach(rect => {
       ctx.strokeStyle = "lime";
       ctx.lineWidth = 3;
-      ctx.strokeRect(x, y, w, h);
+      ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
       ctx.fillStyle = "lime";
       ctx.font = "16px Arial";
-      ctx.fillText("Face", x, y > 10 ? y - 5 : 10);
+      ctx.fillText("Face", rect.x, rect.y > 10 ? rect.y - 5 : 10);
     });
-  }
+  });
 }
 
-// 🔄 Camera switch
+// 🔄 Switch camera
 document.getElementById("switchBtn").onclick = async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
   await startCamera();
   startDetection();
 };
 
-// 🔁 Detection loop
-function startDetection() {
-  async function detect() {
-    await faceDetection.send({ image: videoElement });
-    requestAnimationFrame(detect);
-  }
-  detect();
-}
-
-// 🚀 Start everything
+// 🚀 Start
 async function start() {
   await startCamera();
   startDetection();
