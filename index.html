@@ -10,12 +10,21 @@
       top: 0;
       left: 0;
     }
+    button {
+      position: absolute;
+      z-index: 10;
+      bottom: 20px;
+      left: 20px;
+      padding: 12px 16px;
+      font-size: 16px;
+    }
   </style>
 </head>
 <body>
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
+<button id="switchBtn">Switch Camera</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -24,56 +33,65 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const switchBtn = document.getElementById("switchBtn");
+
+let currentFacingMode = "environment";
+let stream = null;
+let model = null;
 
 async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" }
+  if (stream) {
+    // Stop previous stream
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: currentFacingMode }
   });
+
   video.srcObject = stream;
 
   return new Promise(resolve => {
     video.onloadedmetadata = () => {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
-      resolve(video);
+      resolve();
     };
   });
 }
 
-async function detectPeople() {
-  const model = await cocoSsd.load();
+async function detect() {
+  const predictions = await model.detect(video);
 
-  async function detect() {
-    const predictions = await model.detect(video);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, 0, 0);
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(video, 0, 0);
+  predictions.forEach(prediction => {
+    if (prediction.class === "person") {
+      const [x, y, width, height] = prediction.bbox;
 
-    predictions.forEach(prediction => {
-      if (prediction.class === "person") {
-        const [x, y, width, height] = prediction.bbox;
+      ctx.strokeStyle = "green";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x, y, width, height);
 
-        // Draw green box
-        ctx.strokeStyle = "green";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x, y, width, height);
+      ctx.fillStyle = "green";
+      ctx.font = "16px Arial";
+      ctx.fillText("Person", x, y > 10 ? y - 5 : 10);
+    }
+  });
 
-        // Label
-        ctx.fillStyle = "green";
-        ctx.font = "16px Arial";
-        ctx.fillText("Person", x, y > 10 ? y - 5 : 10);
-      }
-    });
-
-    requestAnimationFrame(detect);
-  }
-
-  detect();
+  requestAnimationFrame(detect);
 }
+
+switchBtn.addEventListener("click", async () => {
+  currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+  await setupCamera();
+});
 
 async function start() {
   await setupCamera();
-  detectPeople();
+  model = await cocoSsd.load();
+  detect();
 }
 
 start();
