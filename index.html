@@ -12,6 +12,7 @@
       left: 0;
       width: 100%;
     }
+
     button {
       position: absolute;
       z-index: 10;
@@ -20,8 +21,8 @@
       padding: 12px 16px;
       font-size: 16px;
       background: white;
-      border: none;
       border-radius: 8px;
+      border: none;
     }
   </style>
 </head>
@@ -32,17 +33,17 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- ✅ STABLE CDN -->
+<!-- Face API -->
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const switchBtn = document.getElementById("switchBtn");
 
 let stream = null;
 let facingMode = "environment";
+let modelsReady = false;
 
 // 📷 Camera
 async function setupCamera() {
@@ -63,18 +64,29 @@ async function setupCamera() {
   });
 }
 
-// 🧠 Load model (FIXED URL)
+// 🧠 Load model (STABLE CDN)
 async function loadModels() {
   await faceapi.nets.tinyFaceDetector.loadFromUri(
-    "https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights"
+    "https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights"
   );
+
+  modelsReady = true;
+  console.log("Models loaded");
 }
 
-// 👁 Detect faces
+// 👁 Detect faces (IMPROVED SETTINGS)
 async function detectFaces() {
+  if (!modelsReady) {
+    requestAnimationFrame(detectFaces);
+    return;
+  }
+
   const detections = await faceapi.detectAllFaces(
     video,
-    new faceapi.TinyFaceDetectorOptions()
+    new faceapi.TinyFaceDetectorOptions({
+      inputSize: 416,   // 🔥 stronger detection
+      scoreThreshold: 0.5
+    })
   );
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -96,7 +108,7 @@ async function detectFaces() {
 }
 
 // 🔄 Switch camera
-switchBtn.onclick = async () => {
+document.getElementById("switchBtn").onclick = async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
   await setupCamera();
 };
@@ -107,9 +119,9 @@ async function start() {
     await loadModels();
     await setupCamera();
     detectFaces();
-  } catch (e) {
-    alert("Error: " + e.message);
-    console.log(e);
+  } catch (err) {
+    alert("Error: " + err.message);
+    console.log(err);
   }
 }
 
