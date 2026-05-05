@@ -3,14 +3,18 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Face Detector</title>
+
   <style>
     body { margin: 0; overflow: hidden; background: black; }
+
     video, canvas {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
+      height: auto;
     }
+
     button {
       position: absolute;
       z-index: 10;
@@ -24,13 +28,15 @@
     }
   </style>
 </head>
+
 <body>
 
 <video id="video" autoplay playsinline></video>
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<!-- IMPORTANT: load library FIRST -->
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
 
 <script>
 const video = document.getElementById("video");
@@ -38,12 +44,14 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 const switchBtn = document.getElementById("switchBtn");
 
-let currentFacingMode = "environment";
 let stream = null;
+let currentFacingMode = "environment";
+let modelsLoaded = false;
 
+// 📷 Camera setup
 async function setupCamera() {
   if (stream) {
-    stream.getTracks().forEach(track => track.stop());
+    stream.getTracks().forEach(t => t.stop());
   }
 
   stream = await navigator.mediaDevices.getUserMedia({
@@ -61,11 +69,18 @@ async function setupCamera() {
   });
 }
 
+// 🧠 Load face model (CDN)
 async function loadModels() {
-  await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+  await faceapi.nets.tinyFaceDetector.loadFromUri(
+    "https://cdn.jsdelivr.net/npm/face-api.js/weights"
+  );
+  modelsLoaded = true;
 }
 
+// 👁 Detect faces
 async function detectFaces() {
+  if (!modelsLoaded) return;
+
   const detections = await faceapi.detectAllFaces(
     video,
     new faceapi.TinyFaceDetectorOptions()
@@ -89,18 +104,29 @@ async function detectFaces() {
   requestAnimationFrame(detectFaces);
 }
 
+// 🔄 Switch camera
 switchBtn.addEventListener("click", async () => {
-  currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+  currentFacingMode =
+    currentFacingMode === "environment" ? "user" : "environment";
+
   await setupCamera();
 });
 
+// 🚀 Start everything
 async function start() {
   try {
+    console.log("Loading models...");
     await loadModels();
+
+    console.log("Starting camera...");
     await setupCamera();
+
+    console.log("Running detection...");
     detectFaces();
+
   } catch (err) {
     alert("Error: " + err.message);
+    console.error(err);
   }
 }
 
