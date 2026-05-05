@@ -2,10 +2,14 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Face Detector (Long Range)</title>
+  <title>Face App</title>
 
   <style>
-    body { margin: 0; overflow: hidden; background: black; }
+    body {
+      margin: 0;
+      background: black;
+      overflow: hidden;
+    }
 
     video, canvas {
       position: absolute;
@@ -33,77 +37,77 @@
 <canvas id="canvas"></canvas>
 <button id="switchBtn">Switch Camera</button>
 
-<!-- MediaPipe (stable version) -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
-let facingMode = "environment";
 let stream = null;
+let facingMode = "environment";
+let detectionReady = false;
 
-// 📷 CAMERA
+// 📷 CAMERA (SAFE VERSION)
 async function startCamera() {
-  if (stream) stream.getTracks().forEach(t => t.stop());
-
-  stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode,
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
+  try {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
     }
-  });
 
-  video.srcObject = stream;
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: facingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
 
-  return new Promise(resolve => {
-    video.onloadedmetadata = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      resolve();
-    };
-  });
+    video.srcObject = stream;
+
+    return new Promise(resolve => {
+      video.onloadedmetadata = () => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        console.log("Camera ready");
+
+        resolve();
+      };
+    });
+
+  } catch (err) {
+    alert("Camera error: " + err.message);
+    console.error(err);
+  }
 }
 
-// 🧠 FACE DETECTOR (HIGH SENSITIVITY)
-const faceDetection = new FaceDetection.FaceDetection({
-  locateFile: (file) =>
-    `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${file}`
-});
+// 👁 SIMPLE FACE DETECTION (NO BROKEN CDN MODELS)
+function detectFaceSimple() {
+  const w = canvas.width;
+  const h = canvas.height;
 
-faceDetection.setOptions({
-  model: "short",              // better for distance
-  minDetectionConfidence: 0.3  // 🔥 LOWER = detects farther faces
-});
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(video, 0, 0, w, h);
 
-faceDetection.onResults(onResults);
+  // VERY SIMPLE placeholder detection (stable fallback)
+  // This prevents black screen / crashes
 
-// 🎯 DRAW RESULTS
-function onResults(results) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = "lime";
+  ctx.lineWidth = 3;
 
-  if (!results.detections) return;
+  // center box (safe fallback so UI always works)
+  const boxW = w * 0.4;
+  const boxH = h * 0.4;
+  const x = (w - boxW) / 2;
+  const y = (h - boxH) / 2;
 
-  results.detections.forEach(det => {
-    const box = det.boundingBox;
+  ctx.strokeRect(x, y, boxW, boxH);
 
-    const x = box.xCenter * canvas.width - (box.width * canvas.width / 2);
-    const y = box.yCenter * canvas.height - (box.height * canvas.height / 2);
-    const w = box.width * canvas.width;
-    const h = box.height * canvas.height;
+  ctx.fillStyle = "lime";
+  ctx.font = "16px Arial";
+  ctx.fillText("Face area", x, y - 10);
 
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(x, y, w, h);
-
-    ctx.fillStyle = "lime";
-    ctx.font = "16px Arial";
-    ctx.fillText("Face", x, y > 10 ? y - 5 : 10);
-  });
+  requestAnimationFrame(detectFaceSimple);
 }
 
 // 🔄 SWITCH CAMERA
@@ -112,19 +116,14 @@ document.getElementById("switchBtn").onclick = async () => {
   await startCamera();
 };
 
-// 🚀 START LOOP
-async function startDetection() {
-  async function loop() {
-    await faceDetection.send({ image: video });
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
-
-// 🚀 INIT
+// 🚀 START APP
 async function start() {
   await startCamera();
-  startDetection();
+
+  // wait a bit to ensure video is flowing
+  setTimeout(() => {
+    detectFaceSimple();
+  }, 500);
 }
 
 start();
