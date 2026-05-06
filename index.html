@@ -2,52 +2,57 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Exo Skeleton Fixed</title>
+  <title>Green Night Vision Exo-Skeleton</title>
 
   <style>
-    body {
-      margin: 0;
-      overflow: hidden;
-      background: black;
+    body { margin: 0; overflow: hidden; background: black; }
+
+    /* The Night Vision Effect */
+    #container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      /* Green tint + high contrast + brightness boost */
+      filter: sepia(100%) hue-rotate(60deg) brightness(1.2) contrast(1.5);
     }
 
     video {
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      object-fit: contain;
-      background: black;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
     }
 
     canvas {
       position: absolute;
-      top: 0;
-      left: 0;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
     }
 
     button {
       position: absolute;
-      z-index: 10;
-      bottom: 20px;
-      left: 20px;
-      padding: 12px 16px;
-      font-size: 16px;
-      background: white;
-      border: none;
-      border-radius: 8px;
+      z-index: 100;
+      bottom: 20px; left: 20px;
+      padding: 12px;
+      background: rgba(0, 255, 0, 0.3);
+      color: lime;
+      border: 1px solid lime;
+      border-radius: 5px;
+      font-family: monospace;
     }
   </style>
 </head>
-
 <body>
 
-<video id="video" autoplay playsinline></video>
-<canvas id="canvas"></canvas>
-<button id="switchBtn">Switch Camera</button>
+<div id="container">
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+</div>
+<button id="switchBtn">SWITCH CAM</button>
 
+<!-- MediaPipe Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
@@ -56,22 +61,15 @@ const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 let facingMode = "environment";
-let pose;
+let pose, faceMesh;
 
-// 📷 CAMERA (WAIT PROPERLY)
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode,
-      width: { ideal: 1280 },
-      height: { ideal: 720 }
-    }
+    video: { facingMode, width: 1280, height: 720 }
   });
-
   video.srcObject = stream;
-
   return new Promise(resolve => {
-    video.onloadeddata = () => {   // 🔥 IMPORTANT FIX (not metadata)
+    video.onloadeddata = () => {
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       resolve();
@@ -79,78 +77,73 @@ async function startCamera() {
   });
 }
 
-// 🦾 INIT POSE
-function initPose() {
-  pose = new Pose({
-    locateFile: (file) =>
-      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
-  });
+function initModels() {
+  // Setup Pose (Skeleton)
+  pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
+  pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
+  pose.onResults(onPoseResults);
 
-  pose.setOptions({
-    modelComplexity: 1,
-    smoothLandmarks: true,
-    minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5
-  });
-
-  pose.onResults(onResults);
+  // Setup Face Mesh
+  faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
+  faceMesh.setOptions({ maxNumFaces: 1, minDetectionConfidence: 0.5 });
+  faceMesh.onResults(onFaceResults);
 }
 
-// 🎯 DRAW SKELETON
-function onResults(results) {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+function onPoseResults(results) {
   if (!results.poseLandmarks) return;
+  drawSkeleton(results.poseLandmarks);
+}
 
-  const l = results.poseLandmarks;
+function onFaceResults(results) {
+  if (!results.multiFaceLandmarks) return;
+  for (const landmarks of results.multiFaceLandmarks) {
+    drawFace(landmarks);
+  }
+}
 
-  draw(11,12); draw(11,13); draw(13,15);
-  draw(12,14); draw(14,16);
-  draw(11,23); draw(12,24); draw(23,24);
-  draw(23,25); draw(25,27);
-  draw(24,26); draw(26,28);
-
-  l.forEach(p => {
-    ctx.fillStyle = "lime";
-    ctx.beginPath();
-    ctx.arc(p.x * canvas.width, p.y * canvas.height, 4, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  function draw(a, b) {
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 3;
+function drawSkeleton(l) {
+  const draw = (a, b) => {
+    ctx.strokeStyle = "#00FF00";
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(l[a].x * canvas.width, l[a].y * canvas.height);
     ctx.lineTo(l[b].x * canvas.width, l[b].y * canvas.height);
     ctx.stroke();
-  }
+  };
+
+  // Body Lines
+  draw(11,12); draw(11,13); draw(13,15); draw(12,14); draw(14,16);
+  draw(11,23); draw(12,24); draw(23,24); draw(23,25); draw(25,27);
+  draw(24,26); draw(26,28);
 }
 
-// 🔁 CONTROLLED LOOP (IMPORTANT FIX)
+function drawFace(landmarks) {
+  ctx.fillStyle = "#00FF00";
+  landmarks.forEach(p => {
+    ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 1, 1);
+  });
+}
+
 async function loop() {
   if (video.readyState >= 2) {
     await pose.send({ image: video });
+    await faceMesh.send({ image: video });
   }
   requestAnimationFrame(loop);
 }
 
-// 🔄 SWITCH CAMERA
 document.getElementById("switchBtn").onclick = async () => {
   facingMode = facingMode === "environment" ? "user" : "environment";
   await startCamera();
 };
 
-// 🚀 START
 async function start() {
   await startCamera();
-  initPose();
+  initModels();
   loop();
 }
 
 start();
 </script>
-
 </body>
 </html>
