@@ -2,18 +2,28 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Night Vision Fixed</title>
+  <title>Selective Night Vision</title>
   <style>
     body { margin: 0; overflow: hidden; background: black; font-family: monospace; }
     #container {
       position: relative;
       width: 100vw;
       height: 100vh;
+      /* Night vision look */
       filter: sepia(100%) hue-rotate(70deg) brightness(1.2) contrast(1.5);
     }
     video { position: absolute; visibility: hidden; }
     canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
     
+    #status {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      color: lime;
+      text-shadow: 0 0 5px lime;
+      z-index: 10;
+    }
+
     .controls {
       position: absolute;
       bottom: 30px;
@@ -25,16 +35,18 @@
 
     button {
       padding: 15px 25px;
-      background: rgba(0, 255, 0, 0.2);
+      background: rgba(0, 40, 0, 0.5);
       color: lime;
       border: 2px solid lime;
-      border-radius: 5px;
+      border-radius: 8px;
       font-weight: bold;
-      text-shadow: 0 0 5px lime;
+      letter-spacing: 1px;
     }
   </style>
 </head>
 <body>
+
+<div id="status">SCANNER: <span id="modeText">OFF</span></div>
 
 <div id="container">
   <video id="video" autoplay playsinline></video>
@@ -42,7 +54,7 @@
 </div>
 
 <div class="controls">
-  <button id="switchBtn">FLIP CAMERA</button>
+  <button id="switchBtn">TOGGLE CAM & SCAN</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
@@ -52,6 +64,7 @@
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
+const modeText = document.getElementById("modeText");
 
 let facingMode = "environment"; 
 let currentStream = null;
@@ -59,113 +72,98 @@ let pose, faceMesh;
 let latestPose = null;
 let latestFace = null;
 
-// --- CAMERA LOGIC (FIXED FOR IPHONE) ---
 async function startCamera() {
-  // 1. Stop any existing camera tracks first
   if (currentStream) {
     currentStream.getTracks().forEach(track => track.stop());
   }
 
-  const constraints = {
-    video: {
-      facingMode: { ideal: facingMode },
-      width: { ideal: 640 }, // Lowered for better mobile performance
-      height: { ideal: 480 }
-    }
-  };
+  // Update status text
+  modeText.innerText = (facingMode === "environment") ? "ACTIVE (Scanning Others)" : "OFF (Privacy Mode)";
+  modeText.style.color = (facingMode === "environment") ? "lime" : "#555";
 
   try {
-    currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+    currentStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: facingMode }, width: 640, height: 480 }
+    });
     video.srcObject = currentStream;
-    
-    return new Promise(resolve => {
+    return new Promise(res => {
       video.onloadedmetadata = () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        video.play();
-        resolve();
+        res();
       };
     });
   } catch (err) {
-    console.error("Camera Error: ", err);
-    alert("Could not access " + facingMode + " camera.");
+    alert("Camera error. Check permissions.");
   }
 }
 
-// --- AI LOGIC ---
 function initAI() {
   pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-  pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 }); // Complexity 0 is faster for mobile
-  pose.onResults(res => { latestPose = res.poseLandmarks; });
+  pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
+  pose.onResults(res => { if(facingMode === "environment") latestPose = res.poseLandmarks; });
 
   faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
   faceMesh.setOptions({ maxNumFaces: 1, minDetectionConfidence: 0.5 });
-  faceMesh.onResults(res => { latestFace = res.multiFaceLandmarks; });
+  faceMesh.onResults(res => { if(facingMode === "environment") latestFace = res.multiFaceLandmarks; });
 }
 
-// --- LIVE RENDER LOOP ---
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  // If user cam, we mirror the image so it feels natural
+  // Mirror if front cam
   if (facingMode === "user") {
     ctx.save();
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.restore();
+    latestPose = null; // Clear old data so it doesn't ghost
+    latestFace = null;
   } else {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   }
 
-  // Draw Skeleton
-  if (latestPose) {
+  // Only draw overlays if we are in environment mode
+  if (facingMode === "environment") {
     ctx.strokeStyle = "lime";
     ctx.lineWidth = 3;
-    const connections = [[11,12], [11,13], [13,15], [12,14], [14,16], [11,23], [12,24], [23,24]];
-    connections.forEach(([a, b]) => {
-      ctx.beginPath();
-      let x1 = latestPose[a].x * canvas.width;
-      let x2 = latestPose[b].x * canvas.width;
-      // Mirror math for user cam
-      if (facingMode === "user") {
-        x1 = canvas.width - x1;
-        x2 = canvas.width - x2;
-      }
-      ctx.moveTo(x1, latestPose[a].y * canvas.height);
-      ctx.lineTo(x2, latestPose[b].y * canvas.height);
-      ctx.stroke();
-    });
-  }
+    
+    if (latestPose) {
+      const conn = [[11,12], [11,13], [13,15], [12,14], [14,16], [11,23], [12,24], [23,24]];
+      conn.forEach(([a, b]) => {
+        ctx.beginPath();
+        ctx.moveTo(latestPose[a].x * canvas.width, latestPose[a].y * canvas.height);
+        ctx.lineTo(latestPose[b].x * canvas.width, latestPose[b].y * canvas.height);
+        ctx.stroke();
+      });
+    }
 
-  // Draw Face
-  if (latestFace) {
-    ctx.fillStyle = "lime";
-    latestFace[0].forEach(p => {
-      let x = p.x * canvas.width;
-      if (facingMode === "user") x = canvas.width - x;
-      ctx.fillRect(x, p.y * canvas.height, 2, 2);
-    });
+    if (latestFace) {
+      ctx.fillStyle = "lime";
+      latestFace[0].forEach(p => {
+        ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 2, 2);
+      });
+    }
   }
 
   requestAnimationFrame(render);
 }
 
 async function aiLoop() {
-  if (video.readyState >= 2) {
+  // Only send video to AI if we are using the back camera
+  if (video.readyState >= 2 && facingMode === "environment") {
     await pose.send({ image: video });
     await faceMesh.send({ image: video });
   }
-  setTimeout(aiLoop, 15);
+  setTimeout(aiLoop, 20);
 }
 
-// --- BUTTON LOGIC ---
 document.getElementById("switchBtn").onclick = async () => {
   facingMode = (facingMode === "user") ? "environment" : "user";
   await startCamera();
 };
 
-// Start everything
 async function start() {
   await startCamera();
   initAI();
