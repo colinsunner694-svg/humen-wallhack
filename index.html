@@ -1,177 +1,151 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Selective Night Vision</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exo Skeleton Stable</title>
+
   <style>
-    body { margin: 0; overflow: hidden; background: black; font-family: monospace; }
-    #container {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      /* Night vision look */
-      filter: sepia(100%) hue-rotate(70deg) brightness(1.2) contrast(1.5);
-    }
-    video { position: absolute; visibility: hidden; }
-    canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-    
-    #status {
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      color: lime;
-      text-shadow: 0 0 5px lime;
-      z-index: 10;
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
     }
 
-    .controls {
+    video {
       position: absolute;
-      bottom: 30px;
-      width: 100%;
-      display: flex;
-      justify-content: center;
-      z-index: 100;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      background: black;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
     }
 
     button {
-      padding: 15px 25px;
-      background: rgba(0, 40, 0, 0.5);
-      color: lime;
-      border: 2px solid lime;
+      position: absolute;
+      z-index: 10;
+      bottom: 20px;
+      left: 20px;
+      padding: 12px 16px;
+      font-size: 16px;
+      background: white;
+      border: none;
       border-radius: 8px;
-      font-weight: bold;
-      letter-spacing: 1px;
     }
   </style>
 </head>
+
 <body>
 
-<div id="status">SCANNER: <span id="modeText">OFF</span></div>
-
-<div id="container">
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
-</div>
-
-<div class="controls">
-  <button id="switchBtn">TOGGLE CAM & SCAN</button>
-</div>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+<button id="switchBtn">Switch Camera</button>
 
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
 const video = document.getElementById("video");
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
-const modeText = document.getElementById("modeText");
 
-let facingMode = "environment"; 
-let currentStream = null;
-let pose, faceMesh;
-let latestPose = null;
-let latestFace = null;
+let facingMode = "environment";
+let camera;
+let pose;
 
-async function startCamera() {
-  if (currentStream) {
-    currentStream.getTracks().forEach(track => track.stop());
-  }
+// 🦾 INIT POSE
+function initPose() {
+  pose = new Pose({
+    locateFile: (file) =>
+      `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+  });
 
-  // Update status text
-  modeText.innerText = (facingMode === "environment") ? "ACTIVE (Scanning Others)" : "OFF (Privacy Mode)";
-  modeText.style.color = (facingMode === "environment") ? "lime" : "#555";
+  pose.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
 
-  try {
-    currentStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: facingMode }, width: 640, height: 480 }
-    });
-    video.srcObject = currentStream;
-    return new Promise(res => {
-      video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        res();
-      };
-    });
-  } catch (err) {
-    alert("Camera error. Check permissions.");
-  }
+  pose.onResults(drawResults);
 }
 
-function initAI() {
-  pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
-  pose.setOptions({ modelComplexity: 0, minDetectionConfidence: 0.5 });
-  pose.onResults(res => { if(facingMode === "environment") latestPose = res.poseLandmarks; });
-
-  faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
-  faceMesh.setOptions({ maxNumFaces: 1, minDetectionConfidence: 0.5 });
-  faceMesh.onResults(res => { if(facingMode === "environment") latestFace = res.multiFaceLandmarks; });
-}
-
-function render() {
+// 🎯 DRAW
+function drawResults(results) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-  // Mirror if front cam
-  if (facingMode === "user") {
-    ctx.save();
-    ctx.translate(canvas.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    ctx.restore();
-    latestPose = null; // Clear old data so it doesn't ghost
-    latestFace = null;
-  } else {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  }
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // Only draw overlays if we are in environment mode
-  if (facingMode === "environment") {
+  if (!results.poseLandmarks) return;
+
+  const l = results.poseLandmarks;
+
+  draw(11,12); draw(11,13); draw(13,15);
+  draw(12,14); draw(14,16);
+  draw(11,23); draw(12,24); draw(23,24);
+  draw(23,25); draw(25,27);
+  draw(24,26); draw(26,28);
+
+  l.forEach(p => {
+    ctx.fillStyle = "lime";
+    ctx.beginPath();
+    ctx.arc(p.x * canvas.width, p.y * canvas.height, 4, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  function draw(a, b) {
     ctx.strokeStyle = "lime";
     ctx.lineWidth = 3;
-    
-    if (latestPose) {
-      const conn = [[11,12], [11,13], [13,15], [12,14], [14,16], [11,23], [12,24], [23,24]];
-      conn.forEach(([a, b]) => {
-        ctx.beginPath();
-        ctx.moveTo(latestPose[a].x * canvas.width, latestPose[a].y * canvas.height);
-        ctx.lineTo(latestPose[b].x * canvas.width, latestPose[b].y * canvas.height);
-        ctx.stroke();
-      });
-    }
 
-    if (latestFace) {
-      ctx.fillStyle = "lime";
-      latestFace[0].forEach(p => {
-        ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 2, 2);
-      });
-    }
+    ctx.beginPath();
+    ctx.moveTo(l[a].x * canvas.width, l[a].y * canvas.height);
+    ctx.lineTo(l[b].x * canvas.width, l[b].y * canvas.height);
+    ctx.stroke();
   }
-
-  requestAnimationFrame(render);
 }
 
-async function aiLoop() {
-  // Only send video to AI if we are using the back camera
-  if (video.readyState >= 2 && facingMode === "environment") {
-    await pose.send({ image: video });
-    await faceMesh.send({ image: video });
-  }
-  setTimeout(aiLoop, 20);
+// 📷 CAMERA (IMPORTANT FIX: USE MEDIAPIPE CAMERA)
+function startCamera() {
+  camera = new Camera(video, {
+    onFrame: async () => {
+      await pose.send({ image: video });
+    },
+    width: 1280,
+    height: 720,
+    facingMode: facingMode
+  });
+
+  camera.start();
 }
 
-document.getElementById("switchBtn").onclick = async () => {
-  facingMode = (facingMode === "user") ? "environment" : "user";
-  await startCamera();
+// 📏 CANVAS SETUP
+function setupCanvas() {
+  video.onloadedmetadata = () => {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  };
+}
+
+// 🔄 SWITCH CAMERA
+document.getElementById("switchBtn").onclick = () => {
+  facingMode = facingMode === "environment" ? "user" : "environment";
+  location.reload(); // simplest reliable switch on iPhone
 };
 
+// 🚀 START
 async function start() {
-  await startCamera();
-  initAI();
-  render();
-  aiLoop();
+  initPose();
+  startCamera();
+  setupCanvas();
 }
 
 start();
 </script>
+
 </body>
 </html>
