@@ -2,18 +2,17 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Green Night Vision Exo-Skeleton</title>
+  <title>Clean Green Night Vision</title>
 
   <style>
     body { margin: 0; overflow: hidden; background: black; }
 
-    /* The Night Vision Effect */
     #container {
       position: relative;
       width: 100vw;
       height: 100vh;
-      /* Green tint + high contrast + brightness boost */
-      filter: sepia(100%) hue-rotate(60deg) brightness(1.2) contrast(1.5);
+      /* Night vision color grading */
+      filter: sepia(100%) hue-rotate(60deg) brightness(1.2) contrast(1.4);
     }
 
     video {
@@ -21,6 +20,8 @@
       top: 0; left: 0;
       width: 100%; height: 100%;
       object-fit: cover;
+      /* Video is hidden because we draw it onto the canvas instead */
+      visibility: hidden; 
     }
 
     canvas {
@@ -34,11 +35,11 @@
       z-index: 100;
       bottom: 20px; left: 20px;
       padding: 12px;
-      background: rgba(0, 255, 0, 0.3);
+      background: black;
       color: lime;
-      border: 1px solid lime;
-      border-radius: 5px;
-      font-family: monospace;
+      border: 2px solid lime;
+      border-radius: 8px;
+      font-weight: bold;
     }
   </style>
 </head>
@@ -48,12 +49,10 @@
   <video id="video" autoplay playsinline></video>
   <canvas id="canvas"></canvas>
 </div>
-<button id="switchBtn">SWITCH CAM</button>
+<button id="switchBtn">SWITCH CAMERA</button>
 
-<!-- MediaPipe Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
 <script>
 const video = document.getElementById("video");
@@ -62,10 +61,12 @@ const ctx = canvas.getContext("2d");
 
 let facingMode = "environment";
 let pose, faceMesh;
+let latestPose = null;
+let latestFace = null;
 
 async function startCamera() {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode, width: 1280, height: 720 }
+    video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
   });
   video.srcObject = stream;
   return new Promise(resolve => {
@@ -78,58 +79,56 @@ async function startCamera() {
 }
 
 function initModels() {
-  // Setup Pose (Skeleton)
   pose = new Pose({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}` });
   pose.setOptions({ modelComplexity: 1, minDetectionConfidence: 0.5 });
-  pose.onResults(onPoseResults);
+  pose.onResults(results => { latestPose = results.poseLandmarks; });
 
-  // Setup Face Mesh
   faceMesh = new FaceMesh({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}` });
   faceMesh.setOptions({ maxNumFaces: 1, minDetectionConfidence: 0.5 });
-  faceMesh.onResults(onFaceResults);
+  faceMesh.onResults(results => { latestFace = results.multiFaceLandmarks; });
 }
 
-function onPoseResults(results) {
-  if (!results.poseLandmarks) return;
-  drawSkeleton(results.poseLandmarks);
-}
+function drawFrame() {
+  // 1. Clear the canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-function onFaceResults(results) {
-  if (!results.multiFaceLandmarks) return;
-  for (const landmarks of results.multiFaceLandmarks) {
-    drawFace(landmarks);
+  // 2. Draw the video background
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // 3. Draw Skeleton if found
+  if (latestPose) {
+    const drawLine = (a, b) => {
+      ctx.strokeStyle = "#00FF00";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(latestPose[a].x * canvas.width, latestPose[a].y * canvas.height);
+      ctx.lineTo(latestPose[b].x * canvas.width, latestPose[b].y * canvas.height);
+      ctx.stroke();
+    };
+    drawLine(11,12); drawLine(11,13); drawLine(13,15); drawLine(12,14); drawLine(14,16);
+    drawLine(11,23); drawLine(12,24); drawLine(23,24); drawLine(23,25); drawLine(25,27);
+    drawLine(24,26); drawLine(26,28);
   }
+
+  // 4. Draw Face Mesh if found
+  if (latestFace) {
+    ctx.fillStyle = "#00FF00";
+    for (const landmarks of latestFace) {
+      landmarks.forEach(p => {
+        ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 2, 2);
+      });
+    }
+  }
+
+  requestAnimationFrame(drawFrame);
 }
 
-function drawSkeleton(l) {
-  const draw = (a, b) => {
-    ctx.strokeStyle = "#00FF00";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(l[a].x * canvas.width, l[a].y * canvas.height);
-    ctx.lineTo(l[b].x * canvas.width, l[b].y * canvas.height);
-    ctx.stroke();
-  };
-
-  // Body Lines
-  draw(11,12); draw(11,13); draw(13,15); draw(12,14); draw(14,16);
-  draw(11,23); draw(12,24); draw(23,24); draw(23,25); draw(25,27);
-  draw(24,26); draw(26,28);
-}
-
-function drawFace(landmarks) {
-  ctx.fillStyle = "#00FF00";
-  landmarks.forEach(p => {
-    ctx.fillRect(p.x * canvas.width, p.y * canvas.height, 1, 1);
-  });
-}
-
-async function loop() {
+async function processVideo() {
   if (video.readyState >= 2) {
     await pose.send({ image: video });
     await faceMesh.send({ image: video });
   }
-  requestAnimationFrame(loop);
+  setTimeout(processVideo, 30); // Run detection 30 times a second
 }
 
 document.getElementById("switchBtn").onclick = async () => {
@@ -140,7 +139,8 @@ document.getElementById("switchBtn").onclick = async () => {
 async function start() {
   await startCamera();
   initModels();
-  loop();
+  processVideo(); // Starts AI detection
+  drawFrame();    // Starts visual rendering
 }
 
 start();
